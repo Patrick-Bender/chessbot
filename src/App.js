@@ -111,6 +111,9 @@ function calculateWinner(squares){
 	return null;
 	//can also return "draw"
 }
+function range(start, end) {
+  return Array(end - start + 1).fill().map((_, idx) => start + idx)
+}
 class Board extends React.Component{
 	constructor(props){
 		super(props);
@@ -239,7 +242,30 @@ class Game extends React.Component{
 		return legalMoves
 	}
 	getPawnMoves(id){
-		return new Set([...Array(64).keys()])
+		const squares = this.state.history[this.state.stepNumber].squares;
+		const friendlySide = getSideFromPiece(squares[id]);
+		let direction;
+		(friendlySide === 'white') ? direction = 1 : direction = -1;
+		var positions = new Array();
+		//add 1 move forward if not blocked
+		if (getSideFromPiece(squares[id-(8*direction)]) === 'empty') positions.push(-8)
+		//add 2 move foward if on starting row
+		if (direction === 1 && new Set(range(48, 55)).has(id)){
+			positions.push(-16);
+		}else if (direction === -1 && new Set(range(8,15)).has(id)){
+			positions.push(-16);
+		}
+		//check if it can capture on left or right
+		const rightSide = getSideFromPiece(squares[id+(-7*direction)])
+		const leftSide = getSideFromPiece(squares[id+(-9*direction)])
+		if (rightSide !== friendlySide && rightSide !== 'empty'){
+			positions.push(-7);
+		}
+		if (leftSide !== friendlySide && leftSide !== 'empty'){
+			positions.push(-9);
+		}
+		const legalMoves = new Set(positions.map((position) => id+(position*direction)));
+		return legalMoves
 	}
 	getLegalMoves(id, piece){
 		console.log("ID and piece from get legal moves", id, piece);
