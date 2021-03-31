@@ -96,7 +96,6 @@ function getBoardFromFEN(FEN){
         var i = 0;
         while (FEN.charAt(i) !== ' '){
 		var ch = FEN.charAt(i)
-                console.log(i, id, ch);
                 if (pieces.has(ch)){
                         map[id] = ch;
                         id += 1;
@@ -188,7 +187,6 @@ class Game extends React.Component{
 		if (new Set(['r', 'R', 'q', 'Q']).has(squares[id])){
 			vertAndHor.forEach(dir => dirs.push(dir))
 		}
-		console.log(dirs);
 		for (let dir of dirs){
 			//var dir = dirs[d];
 			pointer = id+dir;
@@ -209,21 +207,22 @@ class Game extends React.Component{
 		const boundaries = new Set([0,1,2,3,4,5,6,7,8,15,23,31,39,47,55,63,62,61,60,59,58,57,56,48,40,32,24,16,8])
 		const friendlySide = getSideFromPiece(squares[id]);
 		var legalMoves = new Set();
-		paths.forEach((path) => legalMoves.add(id+path[2]));
 		for (let path of paths){
-			var [allowed,] = legalMovesCheckSide(friendlySide, getSideFromPiece(squares[path[2]]));
+			var [allowed,] = legalMovesCheckSide(friendlySide, getSideFromPiece(squares[id+path[2]]));
 			var lastPointer = id;
-			console.log(path);
 			for (let position of path){
-				var pointer = id+position
-				if (pointer > 63 || pointer < 0) break;
-				console.log(pointer, lastPointer, this.state.numSquaresToEdge[lastPointer])
-				if (this.state.numSquaresToEdge[lastPointer].get(pointer-lastPointer) === 0) allowed = false
-				lastPointer = pointer
+				var pointer = id+position;
+				var lastRow = Math.floor(lastPointer/8);
+				var lastFile = lastPointer % 8;
+				var currentRow = Math.floor(pointer/8);
+				var currentFile = pointer % 8;
+				if (Math.abs(currentRow-lastRow) > 1) allowed = false
+				if (Math.abs(currentFile-lastFile) > 1) allowed = false
+				if (Math.abs(currentRow-lastRow) >= 1 && Math.abs(currentFile-lastFile) >= 1) allowed = false
+				lastPointer = pointer;
 			}
-			if (allowed) legalMoves.add(path[2]);
+			if (allowed) legalMoves.add(id+path[2]);
 		}
-		console.log(legalMoves);
 		return legalMoves
 	}
 	getKingMoves(id){
@@ -268,7 +267,6 @@ class Game extends React.Component{
 		return legalMoves
 	}
 	getLegalMoves(id, piece){
-		console.log("ID and piece from get legal moves", id, piece);
 		if (id !== null && piece !== ''){
 			if (new Set(['r', 'R', 'b', 'B', 'q', 'Q']).has(piece)){
 				return this.getSlidingMoves(id)
@@ -287,25 +285,52 @@ class Game extends React.Component{
 			return new Set()
 		}
 	}
+	makeRandomMove(side){
+		const history = this.state.history.slice(0, this.state.stepNumber+1);
+		const current = history[history.length-1];
+		var squares = current.squares.slice();
+		var possibleMoves = new Array(64);
+		if (side == 'black'){
+			possiblePieces = new Set(['r', 'b', 'q', 'n', 'k', 'p'])
+		}
+		else if (side == 'white'){
+			possiblePieces = new Set(['R', 'B', 'Q', 'N', 'K', 'P'])
+		}
+		else{
+			throw new Error("Make random move was given a side that was not black or white");
+		}
+		for (var i = 0; i < 64; i++){
+			possibleMoves.append(getLegalMoves(i, squares[i]));
+		}
+		console.log(possibleMoves);
+	}
 	handleClick(i){
 		const history = this.state.history.slice(0, this.state.stepNumber+1);
 		const current = history[history.length-1];
 		var squares = current.squares.slice();
 		const selectedPiece = this.state.selectedPiece;
 		const selectedID = this.state.selectedID;
-		console.log("selected piece and id for handle click", selectedPiece, selectedID);
 		if (calculateWinner(squares)) {
 			return;
-		}else if(selectedPiece && selectedID != null){
+		}
+		//if already selected a piece
+		else if(selectedPiece && selectedID != null){
+			//if clicking on selected piece deselect it
+			if (selectedID == i){
+				this.setState({
+					selectedPiece: null,
+					selectedID: null,
+				});
+			}
 			//if i is a legal move
-			if (this.getLegalMoves(selectedID, selectedPiece).has(i)){
-				squares[selectedID] = ""
-				squares[i] = selectedPiece
+			else if (this.getLegalMoves(selectedID, selectedPiece).has(i)){
+				squares[selectedID] = "";
+				squares[i] = selectedPiece;
 				this.setState({
 					history: history.concat([{
 						squares: squares,
 					}]),
-					whiteIsNext: !this.state.whiteTurn,
+					whiteTurn: !this.state.whiteTurn,
 					stepNumber: history.length,
 					selectedPiece: null,
 					selectedID: null,
@@ -314,7 +339,7 @@ class Game extends React.Component{
 			}
 
 		}
-		else if (this.getLegalMoves(i, squares[i]).size !== 0){
+		else if (this.getLegalMoves(i, squares[i]).size !== 0 && (this.state.whiteTurn === (getSideFromPiece(squares[i]) === 'white'))){
 			this.setState({
 				selectedPiece: squares[i],
 				selectedID: i,
