@@ -9,32 +9,89 @@
             [clojure.pprint :as pp]
             [clojure.data.json :as json])
   (:gen-class))
+(def boundaries (set '(0,1,2,3,4,5,6,7,8,15,23,31,39,47,55,63,62,61,60,59,58,57,56,48,40,32,24,16,8)))
+(def lengthToEdge
+  (to-array 
+    (for [rank (range 8) file (range 8)]
+      (let [north rank
+            south (- 7 rank)
+            west file
+            east (- 7 file)]
+        (hash-map
+            -8 north
+            8 south
+            -1 west
+            1 east
+            -9 (min north west)
+            -7 (min north east)
+            9 (min south east)
+            7 (min south west)
+        )
+      )
+    )
+  )
+)
+(defn getKingMoves [id squares castling]
+  (loop [answers (cond
+                   (= 1 (getSide (get squares id))) 
+                      (cond 
+                        (and 
+                   (= -1 (getSide (get squares id)))
+                   :else '[])
+         ]
+  )
+(defn getSide [square]
+  (cond
+    (contains? (set '(\r \n \b \q \k \p)) square) -1
+    (contains? (set '(\R \N \B \Q \K \P)) square) 1
+    :default 0
+  )
+)
+
+
+(defn getSlidingMoves [id squares]
+  
+  (let [dirs (cond 
+               (contains? (set '(\Q \q)) (get squares id)) '[8 -8 1 -1 7 -7 9 -9]
+               (contains? (set '(\B \b)) (get squares id)) '[7 -7 9 -9]
+               (contains? (set '(\R \r)) (get squares id)) '[8 -8 1 -1]
+               :else (throw (Exception. (str "Called get sliding moves for non-sliding piece with id: " id)))
+              )
+        checkDir (fn [id dir squares side]
+                (loop [answers '[]
+                       distance 1]
+                      (let [pointer (+ id (* distance dir))
+                            pointerSide (getSide (get squares pointer))]
+                        (cond
+                          (= side pointerSide) answers
+                          (= (* -1 side) pointer side) (conj answers pointer)
+                          (<= (get (get lengthToEdge id) dir) distance) (conj answers pointer)
+                          :else (recur (conj answers pointer) (+ distance 1))))))
+            ]
+    (reduce concat (for [dir dirs] (checkDir id dir squares (getSide (get squares id)))))
+    )
+)
+(defn getPawnMoves [id squares enPassant]
+  )
+(defn getKnightMoves [id squares]
+  )
 (defn checkLegality [id squares]
+  (cond
+    ;(contains? (set '("K" "k"))) true
+    
+    )
   )
 (defn truthy? [s]
   (cond
     (contains? (set '("false" "False" "f" "F")) s) false
     (contains? (set '("true" "True" "t" "T")) s) true
     :default (throw (Exception. (str "Truthy? could not evaluate the string: " s)))))
-(comment
-(defn oldFENtoSquares [FEN & {:keys [squares] :or {squares '[]}}]
-  (clojure.pprint/pprint squares)
-  (cond 
-    ;stop when get to a space
-    (= \space (get FEN 0)) squares
-    ;skip slashes
-    (= "/" (get FEN 0)) (conj squares (FENtoSquares (subs FEN 1 (count FEN)) :squares squares))
-    ;if first character is a number
-    (not= nil (re-find #"[0-9]" (str (get FEN 0)))) (conj squares (repeat (- (int (get FEN 0)) 48) "") (FENtoSquares (subs FEN 1 (count FEN)) :squares squares))
-    :default (conj squares (get FEN 0) (FENtoSquares (subs FEN 1 (count FEN)) :squares squares))
-    )
-  )
-)
+
 (defn FENtoSquares [FEN & {:keys [squares] :or {squares '[]}}]
   (loop [FEN FEN
          squares squares]
     (cond
-      (= \space (get FEN 0)) squares
+      (or (= \space (get FEN 0)) (= 0 (count FEN))) squares
       (= \/ (get FEN 0)) (recur (subs FEN 1 (count FEN)) squares)
       (not= nil (re-find #"[0-9]" (str (get FEN 0)))) (recur (subs FEN 1 (count FEN)) (vec (concat squares (repeat (- (int (get FEN 0)) 48) ""))))
       :default (recur (subs FEN 1 (count FEN)) (conj squares (get FEN 0)))
@@ -52,12 +109,18 @@
   (let [params ((assoc-query-params req (or (req :character-encoding) "UTF-8")) :params)
         FEN (params "FEN")
         squares (FENtoSquares FEN)
+        activeSide (get (str/split FEN #" ") 1)
+        castling (get (str/split FEN #" ") 2)
+        enPassant (get (str/split FEN #" ") 3)
+        halfMove (get (str/split FEN #" ") 4)
+        fullMove (get (str/split FEN #" ") 5)
         ]
-    (println "Squares: " squares)
-    (println (count squares))
+    (println squares)
+    (println (get lengthToEdge 10))
+    (println "Sliding moves: " (getSlidingMoves 10 squares))
     {:status  200
      :headers {"Content-Type" "application/json"}
-     :body    (json/write-str {:hello "Hello"})}))
+     :body    (json/write-str {:hello "HELLO"})}))
 
 
 (defroutes app-routes
