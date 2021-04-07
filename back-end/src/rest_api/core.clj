@@ -32,13 +32,36 @@
   )
 )
 (defn getKingMoves [id squares castling]
-  (loop [answers (cond
-                   (= 1 (getSide (get squares id))) 
-                      (cond 
-                        (and 
+  (let [checkCastelClear (fn [start end] (every? (fn [pointer] (= "" (get square pointer))) (range (+ 1 start) end)))
+        ;order is whiteLong, whiteShort, blackLong, blackShort
+        clearChecks '[(checkCastelClear 56 60) (checkCastelClear 60 63) (checkCastelClear 0 4) (checkCastelClear 4 7)]
+        castlingCheck '[(contains? castling \Q) (contains? castling \K) (contains? castling \q) (contains? castling \k)]
+        canCastle (mapv (fn [one two] (and one two)) clearChecks castlingCheck)
+        castleAnswers (cond
+                   (= 1 (getSide (get squares id)))
+                    (cond 
+                      (and (get canCastle 0) (get canCastle 1)) '[62 58]
+                      (get canCastle 0) '[58]
+                      (get canCastle 1) '[62]
+                      :else '[])
                    (= -1 (getSide (get squares id)))
+                    (cond
+                      (and (get canCastle 2) (get canCastle 3)) '[2 6]
+                      (get canCastle 2) '[2]
+                      (get canCastle 3) '[6]
+                      :else '[]) 
                    :else '[])
-         ]
+        dirs '[-8 8 -1 1 -9 9 -7 7]
+        side (getSide (get squares id))]
+    (loop [i_dirs 0
+           answers castleAnswers]
+      (cond
+        (= i_dirs (- (count dirs) 1)) answers
+        (not= side (getSide squares (+ id (get dirs i_dirs)))) (recur (inc i_dirs) (conj answers (+ id (get dirs i_dirs))))
+        :else (recur (inc i_dirs) answers)
+        )
+      )
+    )    
   )
 (defn getSide [square]
   (cond
