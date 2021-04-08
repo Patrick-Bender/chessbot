@@ -5,7 +5,7 @@
             [ring.core.protocols :refer :all]
             [ring.adapter.jetty :refer :all]
             [ring.middleware.params :refer :all]
-            [clojure.string :as str]
+            [clojure.string :as s]
             [clojure.pprint :as pp]
             [clojure.data.json :as json])
   (:gen-class))
@@ -31,38 +31,6 @@
     )
   )
 )
-(defn getKingMoves [id squares castling]
-  (let [checkCastelClear (fn [start end] (every? (fn [pointer] (= "" (get square pointer))) (range (+ 1 start) end)))
-        ;order is whiteLong, whiteShort, blackLong, blackShort
-        clearChecks '[(checkCastelClear 56 60) (checkCastelClear 60 63) (checkCastelClear 0 4) (checkCastelClear 4 7)]
-        castlingCheck '[(contains? castling \Q) (contains? castling \K) (contains? castling \q) (contains? castling \k)]
-        canCastle (mapv (fn [one two] (and one two)) clearChecks castlingCheck)
-        castleAnswers (cond
-                   (= 1 (getSide (get squares id)))
-                    (cond 
-                      (and (get canCastle 0) (get canCastle 1)) '[62 58]
-                      (get canCastle 0) '[58]
-                      (get canCastle 1) '[62]
-                      :else '[])
-                   (= -1 (getSide (get squares id)))
-                    (cond
-                      (and (get canCastle 2) (get canCastle 3)) '[2 6]
-                      (get canCastle 2) '[2]
-                      (get canCastle 3) '[6]
-                      :else '[]) 
-                   :else '[])
-        dirs '[-8 8 -1 1 -9 9 -7 7]
-        side (getSide (get squares id))]
-    (loop [i_dirs 0
-           answers castleAnswers]
-      (cond
-        (= i_dirs (- (count dirs) 1)) answers
-        (not= side (getSide squares (+ id (get dirs i_dirs)))) (recur (inc i_dirs) (conj answers (+ id (get dirs i_dirs))))
-        :else (recur (inc i_dirs) answers)
-        )
-      )
-    )    
-  )
 (defn getSide [square]
   (cond
     (contains? (set '(\r \n \b \q \k \p)) square) -1
@@ -70,6 +38,50 @@
     :default 0
   )
 )
+(defn getIdFromRankAndFile [rankAndFile]
+  (let [file (first (get (s/split rankAndFile #"") 0))
+        rank (first (get (s/split rankAndFile #"") 1))]
+    (println (- (int file) 97) " " (- 7 (- (int rank) 49)))
+    (+ (- (int file) 97) (* 8 (- 7 (- (int rank) 49))))))
+
+  
+
+(defn getKingMoves [id squares castling]
+  (let [checkCastelClear (fn [start end] (every? (fn [pointer] (= "" (get squares pointer))) (range (+ 1 start) end)))
+        ;order is whiteLong, whiteShort, blackLong, blackShort
+        clearChecks [(checkCastelClear 56 60) (checkCastelClear 60 63) (checkCastelClear 0 4) (checkCastelClear 4 7)]
+        castlingCheck [(contains? castling "Q") (contains? castling "K") (contains? castling "q") (contains? castling "k")]
+        rookCheck [(= \R (get squares 56)) (= \R (get squares 63)) (= \r (get squares 0)) (= \r (get squares 7))]
+        canCastle (mapv (fn [one two three] (and (and one two) three)) clearChecks castlingCheck rookCheck)
+        side (getSide (get squares id))
+        castleAnswers (cond
+                   (= 1 side)
+                    (cond 
+                      (and (get canCastle 0) (get canCastle 1)) '[62 58]
+                      (get canCastle 0) '[58]
+                      (get canCastle 1) '[62]
+                      :else '[])
+                   (= -1 side)
+                    (cond
+                      (and (get canCastle 2) (get canCastle 3)) '[2 6]
+                      (get canCastle 2) '[2]
+                      (get canCastle 3) '[6]
+                      :else '[]) 
+                   :else '[])
+        dirs (filterv (fn [x] (and (>= (+ id x) 0) (<= (+ id x) 63))) '[-8 8 -1 1 -9 9 -7 7])]
+    (println clearChecks " " castlingCheck " " canCastle)
+    (println dirs)
+    (loop [i_dirs 0
+           answers castleAnswers]
+      (cond
+        (= i_dirs (count dirs)) answers
+        (not= side (getSide (get squares (+ id (get dirs i_dirs))))) (recur (inc i_dirs) (conj answers (+ id (get dirs i_dirs))))
+        :else (recur (inc i_dirs) answers)
+        )
+      )
+    )    
+  )
+
 
 
 (defn getSlidingMoves [id squares]
@@ -95,6 +107,21 @@
     )
 )
 (defn getPawnMoves [id squares enPassant]
+  (let [side (getSide (get squares id))
+        enPassantTarget (getIdFromRankAndFile enPassant)
+        answers
+          (cond 
+            (= side -1) 
+              (if (or (= enPassantTarget (+ id 7)) (= enpassantTarget (+ id 9)))
+                [enPassantTarget]
+                [])
+            (= side 1)
+              (if (or (= enPassantTarget (+ id -7)) (= enpassantTarget (+ id -9)))
+                [enPassantTarget]
+                [])
+            :else (throw (Exception. "Called Pawn moves on empty square")))]
+    (if 
+      ;figure out a way to do advancing and capturing
   )
 (defn getKnightMoves [id squares]
   )
@@ -132,15 +159,16 @@
   (let [params ((assoc-query-params req (or (req :character-encoding) "UTF-8")) :params)
         FEN (params "FEN")
         squares (FENtoSquares FEN)
-        activeSide (get (str/split FEN #" ") 1)
-        castling (get (str/split FEN #" ") 2)
-        enPassant (get (str/split FEN #" ") 3)
-        halfMove (get (str/split FEN #" ") 4)
-        fullMove (get (str/split FEN #" ") 5)
+        activeSide (get (s/split FEN #" ") 1)
+        castling (set (s/split (get (s/split FEN #" ") 2) #""))
+        enPassant (get (s/split FEN #" ") 3)
+        halfMove (get (s/split FEN #" ") 4)
+        fullMove (get (s/split FEN #" ") 5)
         ]
     (println squares)
     (println (get lengthToEdge 10))
-    (println "Sliding moves: " (getSlidingMoves 10 squares))
+    (println "King moves: " (getKingMoves 4 squares castling))
+    (println (getPawnMoves 9 squares enPassant))
     {:status  200
      :headers {"Content-Type" "application/json"}
      :body    (json/write-str {:hello "HELLO"})}))
