@@ -69,8 +69,6 @@
                       :else '[]) 
                    :else '[])
         dirs (filterv (fn [x] (and (>= (+ id x) 0) (<= (+ id x) 63))) '[-8 8 -1 1 -9 9 -7 7])]
-    (println clearChecks " " castlingCheck " " canCastle)
-    (println dirs)
     (loop [i_dirs 0
            answers castleAnswers]
       (cond
@@ -108,29 +106,58 @@
 )
 (defn getPawnMoves [id squares enPassant]
   (let [side (getSide (get squares id))
-        enPassantTarget (getIdFromRankAndFile enPassant)
-        answers
+        enPassantTarget (if (= enPassant "-") 
+                          -1
+                          (getIdFromRankAndFile enPassant))
+        enPassantAnswers
           (cond 
             (= side -1) 
-              (if (or (= enPassantTarget (+ id 7)) (= enpassantTarget (+ id 9)))
+              (if (or (= enPassantTarget (+ id 7)) (= enPassantTarget (+ id 9)))
                 [enPassantTarget]
                 [])
             (= side 1)
-              (if (or (= enPassantTarget (+ id -7)) (= enpassantTarget (+ id -9)))
+              (if (or (= enPassantTarget (+ id -7)) (= enPassantTarget (+ id -9)))
                 [enPassantTarget]
-                [])
-            :else (throw (Exception. "Called Pawn moves on empty square")))]
-    (if 
-      ;figure out a way to do advancing and capturing
+                []))
+        advanceChecks (if (= side 1) [(+ id -8) (+ id -16)] [(+ id 8) (+ id 16)])
+        captureChecks (if (= side 1) [(+ id -7) (+ id -9)] [(+ id 7) (+ id 9)])
+        advancing (cond
+                    (and (= 0 (getSide (get squares (get advanceChecks 0)))) (= 0 (getSide (get squares (get advanceChecks 1))))) [(get advanceChecks 0) (get advanceChecks 1)]
+                    (= 0 (getSide (get squares (get advanceChecks 0)))) [(get advanceChecks 0)]
+                    :else [])
+        capturing (cond
+                      (and 
+                        (= (* -1 side) (getSide (get squares (get captureChecks 0)))) 
+                        (= (* -1 side) (getSide (get squares (get captureChecks 1))))) 
+                          [(get captureChecks 0) (get captureChecks 1)]
+                      (= (* -1 side) (getSide (get squares (get captureChecks 0)))) [(get captureChecks 0)]
+                      (= (* -1 side) (getSide (get squares (get captureChecks 1)))) [(get captureChecks 1)]
+                      :else [])
+          ]
+          (concat enPassantAnswers advancing capturing))
   )
+(defn abs [n] (max n (- n)))
 (defn getKnightMoves [id squares]
+  (let [pathOffsets [[0 8 16 17] [0 8 16 15] [0 -1 -2 6] [0 -1 -2 -10] [0 -8 -16 -17] [0 -8 -16 -15] [0 1 2 -6] [0 1 2 10]]
+        side (getSide (get squares id))
+        validEnd? (fn [path] (not= side (getSide (get squares (last path)))))
+        paths (filter validEnd? (mapv (fn [pathOffset] (mapv + (repeat id) pathOffset)) pathOffsets))
+        row (fn [x] (int (Math/floor (/ x 8))))
+        col (fn [x] (mod x 8))
+        validPath? (fn [path] (println path)
+                                (loop [i 1]
+                                  
+                                (cond 
+                                 (= (count path) i) true
+                                 (or 
+                                   (< 1 (abs (- (col (path i)) (col (path (- i 1))))))
+                                   (< 1 (abs (- (row (path i)) (row (path (- i 1)))))))
+                                    false
+                                 :else (recur (inc i)))))]
+    (mapv last (filterv validPath? paths))
   )
-(defn checkLegality [id squares]
-  (cond
-    ;(contains? (set '("K" "k"))) true
-    
-    )
-  )
+)
+
 (defn truthy? [s]
   (cond
     (contains? (set '("false" "False" "f" "F")) s) false
@@ -148,14 +175,28 @@
       )
     )
   )
-(defn simple-body-page [req]
-  {:status  200
-   :headers {"Content-Type" "text/html"}
-   :body    "Hello World"})
 
-(defn move-request [req]
-  (println "request: " req)
-  (println "HEADERS: " (req :headers))
+(defn get-legal-moves [id squares castling enPassant]
+  (let [square (get squares id)]
+    (cond 
+      (contains? (set '(\K \k "K" "k")) square) (getKingMoves id squares castling)
+      (contains? (set '(\Q \q \R \r \B \b "Q" "q" "R" "r" "B" "b")) square) (getSlidingMoves id squares)
+      (contains? (set '(\N \n "N" "n")) square) (getKnightMoves id squares)
+      (contains? (set '(\P \p "P" "p")) square) (getPawnMoves id squares enPassant)
+      :else nil)))
+(defn get-all-legal-moves [squares activeSide castling enPassant]
+  (loop [id 0
+         answers '[]]
+    (if (= id 64) answers
+      (if (= activeSide "w")
+          (if (contains? (set '(\K \Q \R \B \N \P "K" "Q" "R" "B" "N" "P")) (get squares id))
+              (recur (inc id) (conj answers (get-legal-moves id squares castling enPassant)))
+              (recur (inc id) (conj answers '[])))
+          (if (contains? (set '(\k \q \r \b \n \p "k" "q" "r" "b" "n" "p")) (get squares id))
+              (recur (inc id) (conj answers (get-legal-moves id squares castling enPassant)))
+              (recur (inc id) (conj answers '[])))))))
+
+(defn get-params [req]
   (let [params ((assoc-query-params req (or (req :character-encoding) "UTF-8")) :params)
         FEN (params "FEN")
         squares (FENtoSquares FEN)
@@ -163,25 +204,42 @@
         castling (set (s/split (get (s/split FEN #" ") 2) #""))
         enPassant (get (s/split FEN #" ") 3)
         halfMove (get (s/split FEN #" ") 4)
-        fullMove (get (s/split FEN #" ") 5)
-        ]
-    (println squares)
-    (println (get lengthToEdge 10))
-    (println "King moves: " (getKingMoves 4 squares castling))
-    (println (getPawnMoves 9 squares enPassant))
+        fullMove (get (s/split FEN #" ") 5)]
+  [FEN squares activeSide castling enPassant halfMove fullMove]
+  )
+)
+(defn simple-page [req]
+  (println req)
+  {:status 200
+   :headers {"Content-Type" "text/html",
+             "Access-Control-Allow-Origin" "*",
+             "Access-Control-Allow-Method" "GET",
+               "Access-Control-Allow-Headers" "Origin, X-Requested-With, Content-Type, Accept"}
+   :body "Hello"})
+
+(defn legal-moves-request [req]
+  (let [[FEN squares activeSide castling enPassant halfMove fullMove] (get-params req)]
+    {:status  200
+     :headers {"Content-Type" "application/json",
+               "Access-Control-Allow-Origin" "*",
+               "Access-Control-Allow-Headers" "Origin, X-Requested-With, Content-Type, Accept"}
+     :body    (json/write-str {:moves (get-all-legal-moves squares activeSide castling enPassant)})}))
+(defn get-moves [req]
+  (let [[FEN squares activeSide castling enPassant halfMove fullMove] (get-params req)]
     {:status  200
      :headers {"Content-Type" "application/json"}
-     :body    (json/write-str {:hello "HELLO"})}))
+     :body    (json/write-str {:moves (str (get-all-legal-moves squares activeSide castling enPassant))})}))
+
 
 
 (defroutes app-routes
-    (GET "/move-request" [] move-request)
+    (GET "/legal-moves" [] simple-page);legal-moves-request)
     (route/not-found "Error, page not found!")
 )
 
 (defn -main
   [& args]
   (let [port (Integer/parseInt (or (System/getenv "PORT") "3001"))]
-   (run-jetty move-request {:port port
+   (run-jetty legal-moves-request {:port port
                              :join? false})
     (println (str "Running webserver at http://127.0.0.1:" port "/"))))

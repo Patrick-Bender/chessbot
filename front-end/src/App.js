@@ -28,6 +28,20 @@ function legalMovesCheckSide(currentSide, squareSide){
 	}
 	return [add, stop]
 }
+function getAllLegalMoves(FEN){
+	return fetch('https://localhost:3001?FEN=' + FEN, {
+		method: "GET",
+		headers: new Headers({
+			"Access-Control-Allow-Origin": "*",
+		}),
+	}).catch((err) => {
+	  if(typeof err === 'string') err = new Error(err)
+	  console.error(err)
+	})
+}
+function getMove(FEN){
+	return fetch("localhost:3001/move-request?FEN=" + FEN)
+}
 function getNumSquaresToEdge(){
 	var numSquaresToEdge = new Array(64);
 	for (var file = 0; file < 8; file ++){
@@ -291,20 +305,21 @@ class Game extends React.Component{
 		var squares = current.squares.slice();
 		var possibleMoves = new Array(64);
 		if (side == 'black'){
-			possiblePieces = new Set(['r', 'b', 'q', 'n', 'k', 'p'])
+			var possiblePieces = new Set(['r', 'b', 'q', 'n', 'k', 'p'])
 		}
 		else if (side == 'white'){
-			possiblePieces = new Set(['R', 'B', 'Q', 'N', 'K', 'P'])
+			var possiblePieces = new Set(['R', 'B', 'Q', 'N', 'K', 'P'])
 		}
 		else{
 			throw new Error("Make random move was given a side that was not black or white");
 		}
 		for (var i = 0; i < 64; i++){
-			possibleMoves.append(getLegalMoves(i, squares[i]));
+			possibleMoves.append(this.getLegalMoves(i, squares[i]));
 		}
 		console.log(possibleMoves);
 	}
 	handleClick(i){
+		console.log(getAllLegalMoves("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"))
 		const history = this.state.history.slice(0, this.state.stepNumber+1);
 		const current = history[history.length-1];
 		var squares = current.squares.slice();
